@@ -20,13 +20,17 @@ spring:
       hibernate:
         default_schema: email
     open-in-view: false
+  # Errors as RFC 9457 problem details: the reason is in "detail", which the
+  # FastAPI proxy passes on to the dashboard.
+  mvc:
+    problemdetails:
+      enabled: true
 
 server:
   # Railway (and most hosts) assign the port through $PORT.
   port: ${PORT:8080}
   error:
     include-stacktrace: never
-    include-message: always
 
 management:
   endpoints:

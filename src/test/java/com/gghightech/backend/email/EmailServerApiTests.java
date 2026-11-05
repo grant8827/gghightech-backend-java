@@ -220,6 +220,8 @@ class EmailServerApiTests {
     void credentialsNeedAVerifiedDomain() throws Exception {
         JsonNode domain = addDomain("shop.test");
         JsonNode error = createAccount(domain.get("id").asString(), "orders", 409);
+        // The reason reaches the dashboard (via FastAPI) as the problem "detail".
+        assertThat(error.get("detail").asString()).startsWith("Verify the domain's DNS records");
         assertThat(james.users).isEmpty();
     }
 
