@@ -1,0 +1,30 @@
+spring:
+  application:
+    name: gghightech-backend-java
+  # Overridden by the SPRING_DATASOURCE_URL / _USERNAME / _PASSWORD
+  # environment variables. The default is the local dev database the
+  # FastAPI backend also uses.
+  datasource:
+    url: jdbc:postgresql://localhost:5432/gghightech_dev
+    username: gghightech_app
+  jpa:
+    # The schema is owned by the FastAPI backend's Alembic migrations.
+    # Hibernate must never create or alter tables in that database.
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+
+server:
+  # Railway (and most hosts) assign the port through $PORT.
+  port: ${PORT:8080}
+  error:
+    include-stacktrace: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
