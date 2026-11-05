@@ -9,6 +9,7 @@ import java.util.stream.Collectors;
 
 import jakarta.mail.MessagingException;
 
+import org.apache.james.transport.mailets.remote.delivery.Bouncer;
 import org.apache.mailet.Mail;
 import org.apache.mailet.base.GenericMailet;
 
@@ -49,7 +50,7 @@ public class DeliveryEventNotifier extends GenericMailet {
                 + field("sender", mail.getMaybeSender().asString("")) + ","
                 + "\"recipients\":[" + mail.getRecipients().stream()
                         .map(r -> quote(r.asString())).collect(Collectors.joining(",")) + "],"
-                + field("error", mail.getErrorMessage()) + ","
+                + field("error", error(mail)) + ","
                 + field("at", Instant.now().toString())
                 + "}";
         HttpRequest.Builder request = HttpRequest.newBuilder(endpoint)
@@ -64,6 +65,22 @@ public class DeliveryEventNotifier extends GenericMailet {
                     log("Could not post " + event + " event: " + e.getClass().getSimpleName());
                     return null;
                 });
+    }
+
+    /**
+     * Our own mailets set the error message; RemoteDelivery leaves it empty
+     * and puts the remote server's reason in the DELIVERY_ERROR attribute.
+     */
+    private static String error(Mail mail) {
+        String message = mail.getErrorMessage();
+        if (message != null && !message.isBlank()) {
+            return message;
+        }
+        String reason = mail.getAttribute(Bouncer.DELIVERY_ERROR)
+                .map(attribute -> String.valueOf(attribute.getValue().value())).orElse("");
+        boolean permanent = mail.getAttribute(Bouncer.IS_DELIVERY_PERMANENT_ERROR)
+                .map(attribute -> Boolean.TRUE.equals(attribute.getValue().value())).orElse(false);
+        return reason.isEmpty() ? "" : (permanent ? "Permanent: " : "Gave up after retries: ") + reason;
     }
 
     private static String field(String name, String value) {

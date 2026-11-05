@@ -7,11 +7,18 @@ spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/gghightech_dev
     username: gghightech_app
+  # This service owns only the "email" schema, through Flyway
+  # (src/main/resources/db/migration). The FastAPI backend's Alembic
+  # migrations own "public", and Hibernate never creates or alters tables.
+  flyway:
+    schemas: email
+    default-schema: email
   jpa:
-    # The schema is owned by the FastAPI backend's Alembic migrations.
-    # Hibernate must never create or alter tables in that database.
     hibernate:
       ddl-auto: none
+    properties:
+      hibernate:
+        default_schema: email
     open-in-view: false
 
 server:
@@ -19,6 +26,7 @@ server:
   port: ${PORT:8080}
   error:
     include-stacktrace: never
+    include-message: always
 
 management:
   endpoints:
@@ -28,3 +36,24 @@ management:
   endpoint:
     health:
       show-details: never
+
+# Email Server settings. Every secret comes from the environment, and a
+# blank token disables the endpoints it protects (they fail closed).
+email:
+  # Sent by the FastAPI proxy on every /api/v1/email request.
+  service-token: ${EMAIL_SERVICE_TOKEN:}
+  # Sent by James (event posts, DKIM key fetches) on /internal requests.
+  internal-token: ${EMAIL_INTERNAL_TOKEN:}
+  # base64, 32 bytes: encrypts DKIM private keys at rest.
+  key-encryption-key: ${EMAIL_KEY_ENCRYPTION_KEY:}
+  dkim-selector: ${EMAIL_DKIM_SELECTOR:gg1}
+  # What every sending domain's SPF record must include, e.g.
+  # "ip4:203.0.113.10" (the VPS) or "include:spf.gghightech.org".
+  spf-mechanism: ${EMAIL_SPF_MECHANISM:}
+  # Shown to admins as the SMTP settings for each new credential.
+  smtp-host: ${EMAIL_SMTP_HOST:}
+  smtp-port: ${EMAIL_SMTP_PORT:587}
+  dns-resolvers: ${EMAIL_DNS_RESOLVERS:1.1.1.1,8.8.8.8}
+  james:
+    webadmin-url: ${JAMES_WEBADMIN_URL:http://127.0.0.1:8100}
+    webadmin-password: ${JAMES_WEBADMIN_PASSWORD:}

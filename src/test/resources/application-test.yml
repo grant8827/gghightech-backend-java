@@ -2,6 +2,15 @@
 # (@ActiveProfiles("test")): an in-memory H2 database, so no PostgreSQL.
 spring:
   datasource:
-    url: jdbc:h2:mem:testdb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    url: jdbc:h2:mem:testdb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
     username: sa
     password: ""
+
+email:
+  service-token: test-service-token
+  internal-token: test-internal-token
+  # 32 zero bytes, base64. Test-only.
+  key-encryption-key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+  spf-mechanism: ip4:203.0.113.10
+  smtp-host: mail.example.test
+  smtp-port: 587

@@ -46,7 +46,8 @@
         </processor>
         <processor state="error" enableJmx="true">
             <mailet match="All" class="com.gghightech.mail.DeliveryEventNotifier">
-                <endpoint>http://127.0.0.1:8199/events</endpoint>
+                <endpoint>${EMAIL_SERVICE_URL}/internal/v1/events</endpoint>
+                <token>${EMAIL_INTERNAL_TOKEN}</token>
                 <event>error</event>
             </mailet>
             <mailet match="All" class="ToRepository">
@@ -77,11 +78,13 @@
                 <exceededProcessor>rate-limited</exceededProcessor>
             </mailet>
             <mailet match="All" class="com.gghightech.mail.DeliveryEventNotifier">
-                <endpoint>http://127.0.0.1:8199/events</endpoint>
+                <endpoint>${EMAIL_SERVICE_URL}/internal/v1/events</endpoint>
+                <token>${EMAIL_INTERNAL_TOKEN}</token>
                 <event>accepted</event>
             </mailet>
             <mailet match="All" class="com.gghightech.mail.DynamicDkimSign">
-                <keysDirectory>${DKIM_KEYS_DIR}</keysDirectory>
+                <keysUrl>${EMAIL_SERVICE_URL}/internal/v1/dkim</keysUrl>
+                <token>${EMAIL_INTERNAL_TOKEN}</token>
                 <selector>gg1</selector>
             </mailet>
             <!-- PoC: every message goes to the local fake "internet" server
@@ -102,35 +105,40 @@
         </processor>
         <processor state="delivered" enableJmx="true">
             <mailet match="All" class="com.gghightech.mail.DeliveryEventNotifier">
-                <endpoint>http://127.0.0.1:8199/events</endpoint>
+                <endpoint>${EMAIL_SERVICE_URL}/internal/v1/events</endpoint>
+                <token>${EMAIL_INTERNAL_TOKEN}</token>
                 <event>delivered</event>
             </mailet>
             <mailet match="All" class="Null"/>
         </processor>
         <processor state="bounces" enableJmx="true">
             <mailet match="All" class="com.gghightech.mail.DeliveryEventNotifier">
-                <endpoint>http://127.0.0.1:8199/events</endpoint>
+                <endpoint>${EMAIL_SERVICE_URL}/internal/v1/events</endpoint>
+                <token>${EMAIL_INTERNAL_TOKEN}</token>
                 <event>failed</event>
             </mailet>
             <mailet match="All" class="Null"/>
         </processor>
         <processor state="sender-denied" enableJmx="true">
             <mailet match="All" class="com.gghightech.mail.DeliveryEventNotifier">
-                <endpoint>http://127.0.0.1:8199/events</endpoint>
+                <endpoint>${EMAIL_SERVICE_URL}/internal/v1/events</endpoint>
+                <token>${EMAIL_INTERNAL_TOKEN}</token>
                 <event>rejected_sender</event>
             </mailet>
             <mailet match="All" class="Null"/>
         </processor>
         <processor state="rate-limited" enableJmx="true">
             <mailet match="All" class="com.gghightech.mail.DeliveryEventNotifier">
-                <endpoint>http://127.0.0.1:8199/events</endpoint>
+                <endpoint>${EMAIL_SERVICE_URL}/internal/v1/events</endpoint>
+                <token>${EMAIL_INTERNAL_TOKEN}</token>
                 <event>rate_limited</event>
             </mailet>
             <mailet match="All" class="Null"/>
         </processor>
         <processor state="relay-denied" enableJmx="true">
             <mailet match="All" class="com.gghightech.mail.DeliveryEventNotifier">
-                <endpoint>http://127.0.0.1:8199/events</endpoint>
+                <endpoint>${EMAIL_SERVICE_URL}/internal/v1/events</endpoint>
+                <token>${EMAIL_INTERNAL_TOKEN}</token>
                 <event>relay_denied</event>
             </mailet>
             <mailet match="All" class="Null"/>
