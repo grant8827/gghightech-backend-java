@@ -1,0 +1,142 @@
+<?xml version="1.0"?>
+
+<!--
+  Licensed to the Apache Software Foundation (ASF) under one
+  or more contributor license agreements.  See the NOTICE file
+  distributed with this work for additional information
+  regarding copyright ownership.  The ASF licenses this file
+  to you under the Apache License, Version 2.0 (the
+  "License"); you may not use this file except in compliance
+  with the License.  You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing,
+  software distributed under the License is distributed on an
+  "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+  KIND, either express or implied.  See the License for the
+  specific language governing permissions and limitations
+  under the License.
+ -->
+
+<!-- Read https://james.apache.org/server/config-mailetcontainer.html for further details -->
+
+<mailetcontainer enableJmx="true">
+
+    <context>
+        <!-- When the domain part of the postmaster mailAddress is missing, the default domain is appended.
+        You can configure it to (for example) <postmaster>postmaster@myDomain.com</postmaster> -->
+        <postmaster>postmaster</postmaster>
+    </context>
+
+    <spooler>
+        <threads>20</threads>
+        <errorRepository>postgres://var/mail/error/</errorRepository>
+    </spooler>
+
+    <processors>
+        <processor state="root" enableJmx="true">
+            <mailet match="All" class="PostmasterAlias"/>
+            <mailet match="RelayLimit=30" class="ToRepository">
+                <repositoryPath>postgres://var/mail/relay-limit-exceeded/</repositoryPath>
+            </mailet>
+            <mailet match="All" class="ToProcessor">
+                <processor>transport</processor>
+            </mailet>
+        </processor>
+        <processor state="error" enableJmx="true">
+            <mailet match="All" class="com.gghightech.mail.DeliveryEventNotifier">
+                <endpoint>http://127.0.0.1:8199/events</endpoint>
+                <event>error</event>
+            </mailet>
+            <mailet match="All" class="ToRepository">
+                <repositoryPath>postgres://var/mail/error/</repositoryPath>
+                <onMailetException>propagate</onMailetException>
+            </mailet>
+        </processor>
+        <!-- Sending-only: nothing is delivered locally. Only mail from an
+             authenticated SMTP account goes out; anything else is dropped. -->
+        <processor state="transport" enableJmx="true">
+            <mailet match="All" class="RemoveMimeHeader">
+                <name>bcc</name>
+                <onMailetException>ignore</onMailetException>
+            </mailet>
+            <mailet match="SMTPAuthSuccessful" class="ToProcessor">
+                <processor>outbound</processor>
+            </mailet>
+            <mailet match="All" class="ToProcessor">
+                <processor>relay-denied</processor>
+            </mailet>
+        </processor>
+        <processor state="outbound" enableJmx="true">
+            <mailet match="All" class="com.gghightech.mail.EnforceFromDomain">
+                <deniedProcessor>sender-denied</deniedProcessor>
+            </mailet>
+            <mailet match="All" class="com.gghightech.mail.PerAccountRateLimit">
+                <maxPerMinute>5</maxPerMinute>
+                <exceededProcessor>rate-limited</exceededProcessor>
+            </mailet>
+            <mailet match="All" class="com.gghightech.mail.DeliveryEventNotifier">
+                <endpoint>http://127.0.0.1:8199/events</endpoint>
+                <event>accepted</event>
+            </mailet>
+            <mailet match="All" class="com.gghightech.mail.DynamicDkimSign">
+                <keysDirectory>${DKIM_KEYS_DIR}</keysDirectory>
+                <selector>gg1</selector>
+            </mailet>
+            <!-- PoC: every message goes to the local fake "internet" server
+                 (gateway). On the VPS, the gateway lines are removed and James
+                 delivers to each recipient's MX directly. -->
+            <mailet match="All" class="RemoteDelivery">
+                <outgoingQueue>outgoing</outgoingQueue>
+                <gateway>127.0.0.1</gateway>
+                <gatewayPort>2526</gatewayPort>
+                <delayTime>3000, 3000</delayTime>
+                <maxRetries>2</maxRetries>
+                <maxDnsProblemRetries>0</maxDnsProblemRetries>
+                <deliveryThreads>4</deliveryThreads>
+                <sendpartial>true</sendpartial>
+                <bounceProcessor>bounces</bounceProcessor>
+                <onSuccess>delivered</onSuccess>
+            </mailet>
+        </processor>
+        <processor state="delivered" enableJmx="true">
+            <mailet match="All" class="com.gghightech.mail.DeliveryEventNotifier">
+                <endpoint>http://127.0.0.1:8199/events</endpoint>
+                <event>delivered</event>
+            </mailet>
+            <mailet match="All" class="Null"/>
+        </processor>
+        <processor state="bounces" enableJmx="true">
+            <mailet match="All" class="com.gghightech.mail.DeliveryEventNotifier">
+                <endpoint>http://127.0.0.1:8199/events</endpoint>
+                <event>failed</event>
+            </mailet>
+            <mailet match="All" class="Null"/>
+        </processor>
+        <processor state="sender-denied" enableJmx="true">
+            <mailet match="All" class="com.gghightech.mail.DeliveryEventNotifier">
+                <endpoint>http://127.0.0.1:8199/events</endpoint>
+                <event>rejected_sender</event>
+            </mailet>
+            <mailet match="All" class="Null"/>
+        </processor>
+        <processor state="rate-limited" enableJmx="true">
+            <mailet match="All" class="com.gghightech.mail.DeliveryEventNotifier">
+                <endpoint>http://127.0.0.1:8199/events</endpoint>
+                <event>rate_limited</event>
+            </mailet>
+            <mailet match="All" class="Null"/>
+        </processor>
+        <processor state="relay-denied" enableJmx="true">
+            <mailet match="All" class="com.gghightech.mail.DeliveryEventNotifier">
+                <endpoint>http://127.0.0.1:8199/events</endpoint>
+                <event>relay_denied</event>
+            </mailet>
+            <mailet match="All" class="Null"/>
+        </processor>
+    </processors>
+
+</mailetcontainer>
+
+
