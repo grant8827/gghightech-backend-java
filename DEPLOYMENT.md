@@ -8,10 +8,13 @@ Admin dashboard (gghightech.org/admin, SUPER_ADMIN)
    │
 FastAPI  (/api/v1/email-server/*, audited)        Railway
    │  private network, X-Service-Token
-Java management service (this repo) ── PostgreSQL "email" schema (Railway)
-   │  WebAdmin over TLS, IP-restricted        ▲ HTTPS, internal token
+Java management service (this repo) ── PostgreSQL (Railway)
+   │  WebAdmin over TLS, IP-restricted        │  "railway" db: email schema
+   │                                          │  "james" db: James's data
+   │                                          │      ▲ TLS, TCP proxy
+   │                                          ▲ HTTPS, internal token
    ▼                                          │ (DKIM keys, delivery events)
-Apache James 3.9.1 + local PostgreSQL ────────┘                    VPS
+Apache James 3.9.1 (no local database) ───────┘                    VPS
    │  SMTP port 25, direct to MX
 recipients' mail servers
 ```
@@ -68,7 +71,7 @@ local DNS server (`james-poc/integration_test.py` 13/13,
 | Inbound TCP 25, 587 (and 465) allowed | Bounces and authenticated submission |
 | IPv6: either disable outbound IPv6 in James, or give it a PTR too | Mail sent over IPv6 without a PTR gets rejected |
 
-**Size:** 2 vCPU, 4 GB RAM (the James JVM uses about 1–2 GB, plus PostgreSQL), 40 GB SSD, **Ubuntu 24.04 LTS**.
+**Size:** 2 vCPU, 4 GB RAM (the James JVM uses about 1–2 GB; no database runs on the VPS), 40 GB SSD, **Ubuntu 24.04 LTS**. Hetzner's CX22 fits.
 
 **Providers.** Their policies change, so treat this as a starting point, not a promise:
 
@@ -78,6 +81,40 @@ local DNS server (`james-poc/integration_test.py` 13/13,
 | Vultr | Blocked by default; support ticket explaining the use |
 | OVHcloud | Often open on VPS; check the specific range |
 | DigitalOcean, AWS Lightsail, most cloud PaaS | Blocked and rarely or never unblocked. Avoid |
+
+---
+
+## 3a. Storage
+
+**Decision: PostgreSQL only, on Railway.** James keeps all its data (domains,
+users, mail queue, message bodies) in a dedicated `james` database on the
+existing Railway PostgreSQL instance. No database runs on the VPS, and no
+object storage is used.
+
+- **Why PostgreSQL for message bodies too** (`blob.properties`:
+  `implementation=postgres`): this server only sends. A message is stored only
+  until it is delivered or its retries run out, so storage stays at a few
+  hundred MB at most. Object storage (e.g. Hetzner Object Storage) only pays
+  off for real mailboxes that keep mail long term; James can switch to it
+  later through `blob.properties` without other changes.
+- **Isolation:** a separate `james` database and `james` role
+  (`james-poc/conf-production/railway-james-db.sql`). The role has no
+  privileges on the app's `railway` database. Connection pool capped at 10
+  (plus 5 for the RLS bypass pool) to share Railway's ~100 connections.
+- **Network:** the VPS isn't on Railway's private network, so James connects
+  through the Postgres service's **TCP proxy** with `ssl.mode=require`. Turning
+  the proxy on makes the database reachable from the internet (password + TLS
+  protected; Railway can't IP-allowlist it). Use a long random password for
+  every role, including the existing ones, before enabling it.
+- **Effect on sending:** none on deliverability. If Railway Postgres is
+  unreachable, James stops accepting new mail until it's back; queued mail is
+  kept and delivered afterwards. James already depends on Railway at send time
+  for DKIM keys, so this adds little new risk.
+- **Backups:** covered by Railway's Postgres backups, one place for both
+  databases.
+- **Later, if email becomes business-critical:** move the `james` database to
+  PostgreSQL on the VPS (`pg_dump` / `pg_restore`, then repoint
+  `postgres.properties`) so sending keeps working through a Railway outage.
 
 ---
 
@@ -124,10 +161,15 @@ James's `heloName` must be `mail.gghightech.org`, and the A record and PTR must 
 1. **Choose a provider and confirm port 25 outbound in writing.** Create the VPS (Ubuntu 24.04). Set its PTR to `mail.gghightech.org`. Check the IP against blocklists.
 2. **DNS:** add the A record and the HELO SPF for `mail`.
 3. **Harden the server:** SSH keys only, `ufw` with the ports above, `fail2ban`, unattended security upgrades, time sync.
-4. **Install** Temurin 21 and PostgreSQL 16 locally. Create the `james` database and role.
+4. **Install** Temurin 21 (no PostgreSQL on the VPS). Then set up James's database on Railway:
+   1. Generate a password (`openssl rand -base64 32`), put it in `railway-james-db.sql`, and run it: `railway connect Postgres`, then `\i james-poc/conf-production/railway-james-db.sql`.
+   2. Enable the TCP proxy: Railway dashboard → Postgres → Settings → Networking → TCP Proxy. Note the domain and port.
+   3. On the VPS, create `/etc/james/james.env` from `conf-production/james.env.example` (chmod 600), with the proxy host, port and password.
+   4. Check from the VPS: `psql "host=<proxy> port=<port> dbname=james user=james sslmode=require" -c 'select 1'`.
 5. **Install James 3.9.1** (`james-server-postgres-app.zip`, SHA-512 verified) under `/opt/james` as a systemd service running as an unprivileged `james` user. Allow binding to ports 25, 465 and 587 with `CAP_NET_BIND_SERVICE`.
-6. **Configure James** from `james-poc/conf/`:
-   - fill in the placeholders
+6. **Configure James** from `james-poc/conf/`, with the production storage files from `james-poc/conf-production/`:
+   - copy `blob.properties`, and render `postgres.properties` with `envsubst` (command at the top of the file). Don't use the PoC `conf/postgres.properties`, which points at a local test database
+   - fill in the other placeholders
    - **remove the `gateway` and `gatewayPort` lines** so James delivers directly to MX
    - set `heloName`
    - enable an inbound port 25 server for bounces only
